@@ -733,15 +733,15 @@ const form = document.getElementById("infoForm");
     })
     .then(response => {
       if (response.ok) {
-        window.location.href = "https://www.fssystem.com/";
-      } else {
-        alert("Submission failed. Please try again.");
-      }
-    })
-    .catch(error => {
-      console.error("Fetch error:", error);
-      alert("There was a problem submitting the form.");
-    });
+    document.querySelector(".form-wrapper").innerHTML = `
+      <h2>Thank You!</h2>
+      <p>Your information has been submitted successfully.</p>
+    `;
+    gtag_report_conversion(); // Fire Google Ads conversion
+  } else {
+    alert("Submission failed. Please try again.");
+  }
+})
 
     e.preventDefault();
   });
