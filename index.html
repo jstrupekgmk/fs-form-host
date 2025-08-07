@@ -727,7 +727,7 @@ const form = document.getElementById("infoForm");
     const selectedState = this.value;
     countySelect.innerHTML = '<option value="">-- Select a County --</option>';
     if (stateCountyMap[selectedState]) {
-      stateCountyMap[selectedState].forEach(county => {
+      [...stateCountyMap[selectedState]].sort().forEach(county => {
         const option = document.createElement("option");
         option.value = county;
         option.textContent = county;
