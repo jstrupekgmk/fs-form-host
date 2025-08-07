@@ -7,18 +7,33 @@
   <!-- Global site tag (gtag.js) - Google Ads -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=AW-17226843238"></script>
 <script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){ dataLayer.push(arguments); }
-  gtag('js', new Date());
+  let gtagLoaded = false;
 
-  gtag('config', 'AW-17226843238');
+  // Load gtag.js dynamically
+  const gtagScript = document.createElement('script');
+  gtagScript.src = "https://www.googletagmanager.com/gtag/js?id=AW-17226843238";
+  gtagScript.async = true;
+  gtagScript.onload = () => {
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){ dataLayer.push(arguments); }
+    window.gtag = gtag; // expose gtag to global scope
+    gtag('js', new Date());
+    gtag('config', 'AW-17226843238');
+    gtagLoaded = true;
+  };
+  document.head.appendChild(gtagScript);
 
+  // Fire conversion when ready
   function gtag_report_conversion() {
-    gtag('event', 'conversion', {
-      'send_to': 'AW-17226843238/EaWBCPS11oEbEOaIs5ZA',
-      'value': 1.0,
-      'currency': 'USD'
-    });
+    if (gtagLoaded && typeof gtag === 'function') {
+      gtag('event', 'conversion', {
+        'send_to': 'AW-17226843238/EaWBCPS11oEbEOaIs5ZA',
+        'value': 1.0,
+        'currency': 'USD'
+      });
+    } else {
+      console.warn('Google Ads tag not yet loaded. Conversion not fired.');
+    }
   }
 </script>
   <style>
