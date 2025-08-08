@@ -763,13 +763,23 @@ const form = document.getElementById("infoForm");
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formData)
     })
-    .then(response => {
-      if (response.ok) {
+   .then(response => {
+  if (response.ok) {
     document.querySelector(".form-wrapper").innerHTML = `
       <h2>Thank You!</h2>
       <p>Your information has been submitted successfully. Someone from your local FS will be reaching out to you shortly!</p>
     `;
-    gtag_report_conversion(); // Fire Google Ads conversion
+
+    // Fire Google Ads conversion
+    gtag('event', 'conversion', {
+      'send_to': 'AW-17226843238/EaWBCPS11oEbEOaIs5ZA',
+      'value': 1.0,
+      'currency': 'USD',
+      'event_callback': function () {
+        console.log("Google Ads conversion ping sent");
+      },
+      'event_timeout': 2000
+    });
   } else {
     alert("Submission failed. Please try again.");
   }
