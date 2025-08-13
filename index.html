@@ -113,11 +113,7 @@
     .checkbox-wrapper label:hover {
       background-color: #f3d6d6;
     }
-    .form-wrapper { 
-  padding-bottom: 60px; 
-}
-
-    /* keep the last element from adding extra outside space */
+    .form-wrapper { padding-bottom: 32px; }
 button[type="submit"] { margin-bottom: 0; display: block; }
 
   </style>
@@ -798,63 +794,79 @@ const form = document.getElementById("infoForm");
 });
 </script>
  <script>
+/* ----- Accurate height -> parent, with buffering and stable timing ----- */
 (function () {
-  const TARGET_ORIGIN = '*';   // parent filters by origin
-  const wrapper = document.querySelector('.form-wrapper');
-  const BUFFER = 80;           // larger child-side buffer to prevent cutoff
+  const WRAP = document.querySelector('.form-wrapper');
 
-  // Ensure no page-level scrollbars inside the iframe
-  (function ensureCss(){
-    const s = document.createElement('style');
-    s.textContent = 'html,body{margin:0;overflow:hidden;height:auto!important;min-height:0!important}';
-    document.head.appendChild(s);
-  })();
-
-  // Measure the full content height of the wrapper (includes inner overflow)
+  function getComputedNumber(el, prop) {
+    const v = parseFloat(getComputedStyle(el)[prop]);
+    return isNaN(v) ? 0 : v;
+  }
   function measure() {
-   const base = Math.max(
-    document.documentElement.scrollHeight,
-    document.body.scrollHeight,
-    document.querySelector('.form-wrapper')?.scrollHeight || 0
-  );
-  return Math.ceil(base + BUFFER);
-}
+    // exact wrapper height on screen + its margins + a small cushion
+    const rect = WRAP.getBoundingClientRect();
+    const marginBottom = getComputedNumber(WRAP, 'marginBottom');
+    const marginTop = getComputedNumber(WRAP, 'marginTop');
+    const BUFFER = 18; // small cushion so nothing is clipped
+    return Math.ceil(rect.height + marginTop + marginBottom + BUFFER);
+  }
 
-  let last = 0, raf = 0;
-  function send(reason) {
-    const h = measure();
-    if (Math.abs(h - last) >= 1) {
-      last = h;
-      window.parent.postMessage({ type:'FS_FORM_HEIGHT', height:h, reason }, TARGET_ORIGIN);
-      // console.debug('[FS child] →', h, reason);
+  let scheduled = false;
+  function post(reason) {
+    const height = measure();
+    window.parent.postMessage(
+      { type: 'FS_FORM_HEIGHT', height, reason },
+      '*'
+    );
+  }
+  function schedule(reason) {
+    if (scheduled) return;
+    scheduled = true;
+    // wait one frame so fonts/layout have settled
+    requestAnimationFrame(() => {
+      scheduled = false;
+      // wait one more frame for good measure (prevents rare first-paint cuts)
+      requestAnimationFrame(() => post(reason));
+    });
+  }
+
+  // Observe wrapper size changes (fonts loading, County show/hide, thank-you view)
+  const ro = new ResizeObserver(() => schedule('resize-observer'));
+  ro.observe(WRAP);
+
+  window.addEventListener('load', () => schedule('load'));
+  window.addEventListener('resize', () => schedule('window-resize'));
+
+  // expose a manual nudge hook (parent OR our own code can call it)
+  window.FS_requestResize = () => schedule('manual');
+
+  // >>> IMPORTANT: call FS_requestResize() when County is toggled <<<
+  const stateSelect = document.getElementById('stateSelect');
+  const countySelect = document.getElementById('countySelect');
+  const countyGroup  = document.getElementById('countyGroup');
+
+  // if your file already has the state change handler, just add FS_requestResize() at the end.
+  // For completeness, here is the handler with the call included:
+  stateSelect.addEventListener('change', function () {
+    const selectedState = this.value;
+    countySelect.innerHTML = '<option value="">-- Select a County --</option>';
+    if (window.stateCountyMap && window.stateCountyMap[selectedState]) {
+      [...window.stateCountyMap[selectedState]].sort().forEach(county => {
+        const opt = document.createElement('option');
+        opt.value = county;
+        opt.textContent = county;
+        countySelect.appendChild(opt);
+      });
+      countyGroup.style.display = 'block';
+    } else {
+      countyGroup.style.display = 'none';
     }
-  }
-  function queue(reason){ if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(() => send(reason)); }
-
-  // Initial
-  window.addEventListener('load', () => queue('load'));
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => queue('fonts'));
-
-  // Watch wrapper content updates & size changes
-  if (window.ResizeObserver && wrapper) {
-    const ro = new ResizeObserver(() => queue('resize-observer'));
-    ro.observe(wrapper);
-  }
-  if (window.MutationObserver && wrapper) {
-    const mo = new MutationObserver(() => queue('mutation'));
-    mo.observe(wrapper, { childList:true, subtree:true, characterData:true });
-  }
-
-  // Extra nudges
-  window.addEventListener('resize', () => queue('window-resize'));
-  window.addEventListener('message', (ev) => {
-    if ((ev.data || {}).type === 'FS_REQUEST_HEIGHT') queue('parent-request');
+    FS_requestResize(); // <- re-measure right after show/hide
   });
 
-  // If your script swaps in the Thank-You via innerHTML, nudge again
-  const origInner = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
-  Object.defineProperty(wrapper, 'innerHTML', {
-    set(v){ origInner.call(this, v); setTimeout(() => queue('innerHTML'), 60); }
+  // also nudge height after thank-you message is shown
+  document.getElementById('infoForm')?.addEventListener('submit', () => {
+    setTimeout(FS_requestResize, 50);
   });
 })();
 </script>
