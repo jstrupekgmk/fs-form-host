@@ -794,9 +794,9 @@ const form = document.getElementById("infoForm");
 </script>
  <script>
 (function () {
-  const TARGET_ORIGIN = '*';          // parent filters by origin
+  const TARGET_ORIGIN = '*';   // parent filters by origin
   const wrapper = document.querySelector('.form-wrapper');
-  const BUFFER = 24;                  // child-side buffer to avoid inner scroll
+  const BUFFER = 56;           // larger child-side buffer to prevent cutoff
 
   // Ensure no page-level scrollbars inside the iframe
   (function ensureCss(){
@@ -805,15 +805,13 @@ const form = document.getElementById("infoForm");
     document.head.appendChild(s);
   })();
 
+  // Measure the full content height of the wrapper (includes inner overflow)
   function measure() {
     if (!wrapper) {
       return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) + BUFFER;
     }
-    const rect = wrapper.getBoundingClientRect();
-    const cs = getComputedStyle(wrapper);
-    const mt = parseFloat(cs.marginTop) || 0;
-    const mb = parseFloat(cs.marginBottom) || 0;
-    return Math.ceil(rect.height + mt + mb + BUFFER);
+    // Use scrollHeight for “true” content height
+    return Math.ceil(wrapper.scrollHeight + BUFFER);
   }
 
   let last = 0, raf = 0;
@@ -827,34 +825,31 @@ const form = document.getElementById("infoForm");
   }
   function queue(reason){ if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(() => send(reason)); }
 
-  // Initials
+  // Initial
   window.addEventListener('load', () => queue('load'));
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => queue('fonts'));
 
-  // Watch wrapper only (less noise)
+  // Watch wrapper content updates & size changes
   if (window.ResizeObserver && wrapper) {
     const ro = new ResizeObserver(() => queue('resize-observer'));
     ro.observe(wrapper);
-  } else {
-    setInterval(() => queue('tick'), 1500);
+  }
+  if (window.MutationObserver && wrapper) {
+    const mo = new MutationObserver(() => queue('mutation'));
+    mo.observe(wrapper, { childList:true, subtree:true, characterData:true });
   }
 
-  // When county section appears or thank-you swaps in, remeasure after paint
-  const stateSelect = document.getElementById('stateSelect');
-  if (stateSelect) stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
-
-  const originalSet = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
-  Object.defineProperty(wrapper, 'innerHTML', {
-    set(v){ originalSet.call(this, v); setTimeout(() => queue('innerHTML'), 60); }
-  });
-
-  // Respond to parent’s requests
+  // Extra nudges
+  window.addEventListener('resize', () => queue('window-resize'));
   window.addEventListener('message', (ev) => {
     if ((ev.data || {}).type === 'FS_REQUEST_HEIGHT') queue('parent-request');
   });
 
-  // Also nudge on window resizes inside the iframe
-  window.addEventListener('resize', () => queue('window-resize'));
+  // If your script swaps in the Thank-You via innerHTML, nudge again
+  const origInner = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
+  Object.defineProperty(wrapper, 'innerHTML', {
+    set(v){ origInner.call(this, v); setTimeout(() => queue('innerHTML'), 60); }
+  });
 })();
 </script>
 </body>
