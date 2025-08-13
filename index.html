@@ -37,7 +37,7 @@
   }
 </script>
   <style>
-    html, body { margin: 0; overflow: hidden; }
+    html, body { margin: 0; overflow: visible; height: auto !important; min-height: 0 !important; }
     body {
       font-family: 'Lato', sans-serif;
       padding: 20px;
@@ -794,41 +794,50 @@ const form = document.getElementById("infoForm");
 </script>
   <script>
 (function () {
-  const TARGET_ORIGIN = '*';   // send to any; parent filters by origin
-  let lastSent = 0, rafId = null;
+  // Send to any origin; parent filters by origin
+  const TARGET_ORIGIN = '*';
 
-  function measure() {
-    // scrollHeight only (avoids picking up the iframe viewport height)
-    return Math.max(
-      document.documentElement.scrollHeight,
-      document.body.scrollHeight
-    );
+  // We will measure the visible form wrapper only (avoids viewport feedback)
+  const wrapper = document.querySelector('.form-wrapper');
+
+  function measureWrapperHeight() {
+    if (!wrapper) {
+      // fallback: doc scrollHeight
+      return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    }
+    const cs = getComputedStyle(wrapper);
+    const marginTop = parseFloat(cs.marginTop) || 0;
+    const marginBottom = parseFloat(cs.marginBottom) || 0;
+    const h = Math.ceil(wrapper.getBoundingClientRect().height + marginTop + marginBottom);
+    return h;
   }
 
+  let lastSent = 0, rafId = null;
   function sendHeight(reason) {
-    const h = measure();
+    const h = measureWrapperHeight();
     if (Math.abs(h - lastSent) >= 2) {
       lastSent = h;
       window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height: h, reason }, TARGET_ORIGIN);
       // console.log('[FS child] post height →', h, 'reason:', reason);
     }
   }
-
   function queue(reason) {
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => sendHeight(reason));
   }
 
-  // Initials + fonts (fonts can reflow height)
+  // Initial & after fonts (font swap can change height)
   window.addEventListener('load', () => queue('load'));
-  if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(() => queue('fonts-ready'));
-  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => queue('fonts-ready'));
 
-  // Observe DOM/layout changes
-  const ro = new ResizeObserver(() => queue('resize-observer'));
-  ro.observe(document.documentElement);
-  ro.observe(document.body);
+  // Observe wrapper changes only (less noisy than whole document)
+  if (window.ResizeObserver && wrapper) {
+    const ro = new ResizeObserver(() => queue('resize-observer'));
+    ro.observe(wrapper);
+  } else {
+    // fallback heartbeat for older browsers
+    setInterval(() => queue('heartbeat'), 1500);
+  }
 
   // Respond to parent requests
   window.addEventListener('message', (event) => {
@@ -836,14 +845,11 @@ const form = document.getElementById("infoForm");
     if (data.type === 'FS_REQUEST_HEIGHT') queue('parent-request');
   });
 
-  // State selection reveals County — remeasure after paint
+  // When state changes (county block appears), remeasure after paint
   const stateSelect = document.getElementById('stateSelect');
-  if (stateSelect) {
-    stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
-  }
+  if (stateSelect) stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
 
-  // Thank-you screen replaces form — remeasure after paint
-  const wrapper = document.querySelector('.form-wrapper');
+  // When you swap to thank-you (innerHTML), remeasure after paint
   if (wrapper) {
     const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
     Object.defineProperty(wrapper, 'innerHTML', {
@@ -853,14 +859,8 @@ const form = document.getElementById("infoForm");
       }
     });
   }
-
-  // Safety: a few pings early, then stop
-  let ticks = 0;
-  const t = setInterval(() => {
-    queue('heartbeat');
-    if (++ticks >= 6) clearInterval(t);
-  }, 2000);
 })();
 </script>
+
 </body>
 </html>
