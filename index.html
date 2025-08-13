@@ -112,6 +112,8 @@
     .checkbox-wrapper label:hover {
       background-color: #f3d6d6;
     }
+    html, body { margin: 0; overflow: hidden; }
+
   </style>
 </head>
 <body>
@@ -791,24 +793,55 @@ const form = document.getElementById("infoForm");
 </script>
   <script>
   (function () {
-    const sendHeight = () => {
-      const height =
-        Math.max(
-          document.documentElement.scrollHeight,
-          document.body.scrollHeight
-        );
+    // Helper to measure the full document height reliably
+    function getDocHeight() {
+      const doc = document.documentElement;
+      const body = document.body;
+      return Math.max(
+        body.scrollHeight, doc.scrollHeight,
+        body.offsetHeight, doc.offsetHeight,
+        body.clientHeight, doc.clientHeight
+      );
+    }
+
+    // Send height to parent
+    function sendHeight() {
+      const height = getDocHeight();
       window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height }, '*');
-    };
+    }
 
     // Fire on load
     window.addEventListener('load', sendHeight);
 
-    // Re-fire whenever content changes (fields appear, thank-you message, etc.)
+    // Observe layout changes (fields appear, thank-you message, etc.)
     const ro = new ResizeObserver(sendHeight);
     ro.observe(document.body);
 
-    // Fallback: ping occasionally in case something slips past ResizeObserver
-    const t = setInterval(sendHeight, 600);
+    // Also ping on key interactions that change height
+    const stateSelect = document.getElementById('stateSelect');
+    const countyGroup = document.getElementById('countyGroup');
+    if (stateSelect) {
+      stateSelect.addEventListener('change', () => {
+        // allow DOM to update, then measure
+        setTimeout(sendHeight, 50);
+      });
+    }
+
+    // When the thank-you message replaces the form, resize again
+    // (Hook into fetch .then by monkey-patching innerHTML setter)
+    const wrapper = document.querySelector('.form-wrapper');
+    if (wrapper) {
+      const _set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
+      Object.defineProperty(wrapper, 'innerHTML', {
+        set(value) {
+          _set.call(this, value);
+          setTimeout(sendHeight, 50);
+        }
+      });
+    }
+
+    // Fallback heartbeat (catches any missed changes)
+    const t = setInterval(sendHeight, 800);
     window.addEventListener('beforeunload', () => clearInterval(t));
   })();
 </script>
