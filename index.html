@@ -114,9 +114,11 @@
       background-color: #f3d6d6;
     }
     .form-wrapper { 
-  padding-bottom: 28px; 
+  padding-bottom: 60px; 
 }
 
+    /* keep the last element from adding extra outside space */
+button[type="submit"] { margin-bottom: 0; display: block; }
 
   </style>
 </head>
@@ -799,7 +801,7 @@ const form = document.getElementById("infoForm");
 (function () {
   const TARGET_ORIGIN = '*';   // parent filters by origin
   const wrapper = document.querySelector('.form-wrapper');
-  const BUFFER = 56;           // larger child-side buffer to prevent cutoff
+  const BUFFER = 80;           // larger child-side buffer to prevent cutoff
 
   // Ensure no page-level scrollbars inside the iframe
   (function ensureCss(){
@@ -810,12 +812,13 @@ const form = document.getElementById("infoForm");
 
   // Measure the full content height of the wrapper (includes inner overflow)
   function measure() {
-    if (!wrapper) {
-      return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) + BUFFER;
-    }
-    // Use scrollHeight for “true” content height
-    return Math.ceil(wrapper.scrollHeight + BUFFER);
-  }
+   const base = Math.max(
+    document.documentElement.scrollHeight,
+    document.body.scrollHeight,
+    document.querySelector('.form-wrapper')?.scrollHeight || 0
+  );
+  return Math.ceil(base + BUFFER);
+}
 
   let last = 0, raf = 0;
   function send(reason) {
