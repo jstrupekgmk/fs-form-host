@@ -794,10 +794,8 @@ const form = document.getElementById("infoForm");
 </script>
   <script>
   (function () {
-    // SEND to any origin (parent filters on its side)
-    const TARGET_ORIGIN = '*';
+    const TARGET_ORIGIN = '*'; // ← important for cross-domain
 
-    // Measure only scrollHeight to avoid iframe viewport feedback
     function measure() {
       return Math.max(
         document.documentElement.scrollHeight,
@@ -805,46 +803,36 @@ const form = document.getElementById("infoForm");
       );
     }
 
-    let lastSent = 0;
-    let rafId = null;
-
+    let lastSent = 0, rafId = null;
     function sendHeight(reason) {
       const h = measure();
       if (Math.abs(h - lastSent) >= 2) {
         lastSent = h;
         window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height: h, reason }, TARGET_ORIGIN);
-        // console.log('[child] post height →', h, 'reason:', reason);
+        console.log('[FS child] post height →', h, 'reason:', reason);
       }
     }
-
     function queue(reason) {
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => sendHeight(reason));
     }
 
-    // Respond when the parent asks
     window.addEventListener('message', (event) => {
       const data = event.data || {};
       if (data.type === 'FS_REQUEST_HEIGHT') queue('parent-request');
     });
 
-    // Initial + after fonts + on resize
     window.addEventListener('load', () => queue('load'));
-    if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(() => queue('fonts-ready'));
-    }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => queue('fonts-ready'));
     window.addEventListener('resize', () => queue('window-resize'));
 
-    // Observe overall layout changes
     const ro = new ResizeObserver(() => queue('resize-observer'));
     ro.observe(document.documentElement);
     ro.observe(document.body);
 
-    // State change → county reveal
     const stateSelect = document.getElementById('stateSelect');
     if (stateSelect) stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
 
-    // Thank-you swap
     const wrapper = document.querySelector('.form-wrapper');
     if (wrapper) {
       const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
@@ -856,11 +844,11 @@ const form = document.getElementById("infoForm");
       });
     }
 
-    // Safety ping
     const t = setInterval(() => queue('heartbeat'), 2000);
     window.addEventListener('beforeunload', () => clearInterval(t));
   })();
 </script>
+
 
 
 
