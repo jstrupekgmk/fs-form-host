@@ -794,9 +794,10 @@ const form = document.getElementById("infoForm");
 </script>
   <script>
   (function () {
-    const TARGET_ORIGIN = 'https://jstrupekgmk.github.io'; // parent origin
+    // SEND to any origin (parent filters on its side)
+    const TARGET_ORIGIN = '*';
 
-    // Measure only scrollHeight to avoid using the iframe viewport height
+    // Measure only scrollHeight to avoid iframe viewport feedback
     function measure() {
       return Math.max(
         document.documentElement.scrollHeight,
@@ -808,7 +809,6 @@ const form = document.getElementById("infoForm");
     let rafId = null;
 
     function sendHeight(reason) {
-      // Throttle: only send if changed by >= 2px
       const h = measure();
       if (Math.abs(h - lastSent) >= 2) {
         lastSent = h;
@@ -817,36 +817,34 @@ const form = document.getElementById("infoForm");
       }
     }
 
-    // Debounced notifier (coalesce bursts of mutations/resize)
     function queue(reason) {
       if (rafId) cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => sendHeight(reason));
     }
 
-    // Reply when the parent requests a height
+    // Respond when the parent asks
     window.addEventListener('message', (event) => {
-      if (event.origin !== TARGET_ORIGIN) return;
       const data = event.data || {};
       if (data.type === 'FS_REQUEST_HEIGHT') queue('parent-request');
     });
 
-    // Initial, after fonts, and on resize
+    // Initial + after fonts + on resize
     window.addEventListener('load', () => queue('load'));
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => queue('fonts-ready'));
     }
     window.addEventListener('resize', () => queue('window-resize'));
 
-    // Watch the whole document for layout-affecting changes
+    // Observe overall layout changes
     const ro = new ResizeObserver(() => queue('resize-observer'));
     ro.observe(document.documentElement);
     ro.observe(document.body);
 
-    // Also fire when State changes (county reveal)
+    // State change → county reveal
     const stateSelect = document.getElementById('stateSelect');
     if (stateSelect) stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
 
-    // Fire again when the Thank You message replaces the form
+    // Thank-you swap
     const wrapper = document.querySelector('.form-wrapper');
     if (wrapper) {
       const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
@@ -858,11 +856,12 @@ const form = document.getElementById("infoForm");
       });
     }
 
-    // Safety ping in case something slips by (you can remove later)
+    // Safety ping
     const t = setInterval(() => queue('heartbeat'), 2000);
     window.addEventListener('beforeunload', () => clearInterval(t));
   })();
 </script>
+
 
 
 
