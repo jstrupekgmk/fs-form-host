@@ -794,53 +794,50 @@ const form = document.getElementById("infoForm");
 </script>
   <script>
   (function () {
-    // Robust document height measurement
-    function getDocHeight() {
-      const doc = document.documentElement;
-      const body = document.body;
-      return Math.max(
-        body.scrollHeight, doc.scrollHeight,
-        body.offsetHeight,  doc.offsetHeight,
-        body.clientHeight,  doc.clientHeight
-      );
+    const TARGET_ORIGIN = 'https://jstrupekgmk.github.io'; // parent origin
+    const wrapper = document.querySelector('.form-wrapper');
+
+    function getContentHeight() {
+      // Prefer measuring the wrapper (what you actually see)
+      if (wrapper) {
+        const rect = wrapper.getBoundingClientRect();
+        // rect.height is viewport-relative; add current scroll position to be safe
+        return Math.ceil(rect.height) + 2; // +2 for rounding/border
+      }
+      // Fallback to body scrollHeight only (avoid clientHeight=iframe viewport)
+      return Math.ceil(document.body.scrollHeight);
     }
 
     function sendHeight(reason) {
-      const height = getDocHeight();
-      window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height, reason }, '*');
-      // DEBUG:
-      try { console.log('[FS child] post height →', height, 'reason:', reason); } catch(e){}
+      const height = getContentHeight();
+      window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height, reason }, TARGET_ORIGIN);
+      // console.log('[FS child] post height →', height, 'reason:', reason);
     }
 
-    // Reply to parent “please send height” pings
+    // Respond when parent asks
     window.addEventListener('message', (event) => {
+      if (event.origin !== TARGET_ORIGIN) return;
       const data = event.data || {};
       if (data.type === 'FS_REQUEST_HEIGHT') sendHeight('parent-request');
     });
 
-    // Fire on load + after fonts are ready (fonts can change metrics)
+    // Initial + after fonts load
     window.addEventListener('load', () => sendHeight('load'));
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => sendHeight('fonts-ready'));
     }
 
-    // Observe body for layout changes (county group show/hide, thank-you swap, etc.)
+    // Observe body for layout changes
     const ro = new ResizeObserver(() => sendHeight('resize-observer'));
     ro.observe(document.body);
 
-    // Also fire on window resize (rare inside iframes, but safe)
-    window.addEventListener('resize', () => sendHeight('window-resize'));
-
-    // When State changes, the county block appears -> height changes after DOM paints
+    // State change reveals county; remeasure after paint
     const stateSelect = document.getElementById('stateSelect');
     if (stateSelect) {
-      stateSelect.addEventListener('change', () => {
-        setTimeout(() => sendHeight('state-change'), 60);
-      });
+      stateSelect.addEventListener('change', () => setTimeout(() => sendHeight('state-change'), 60));
     }
 
-    // After the form swaps to the Thank You message, re-measure
-    const wrapper = document.querySelector('.form-wrapper');
+    // When the thank-you replaces the form, remeasure
     if (wrapper) {
       const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
       Object.defineProperty(wrapper, 'innerHTML', {
@@ -851,8 +848,8 @@ const form = document.getElementById("infoForm");
       });
     }
 
-    // Heartbeat as final safety net
-    const t = setInterval(() => sendHeight('heartbeat'), 1200);
+    // Safety heartbeat (you can remove once confirmed)
+    const t = setInterval(() => sendHeight('heartbeat'), 1500);
     window.addEventListener('beforeunload', () => clearInterval(t));
   })();
 </script>
