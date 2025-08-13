@@ -792,75 +792,70 @@ const form = document.getElementById("infoForm");
   });
 });
 </script>
-  <script>
+ <script>
 (function () {
-  // Send to any origin; parent filters by origin
-  const TARGET_ORIGIN = '*';
-
-  // We will measure the visible form wrapper only (avoids viewport feedback)
+  const TARGET_ORIGIN = '*';          // parent filters by origin
   const wrapper = document.querySelector('.form-wrapper');
+  const BUFFER = 24;                  // child-side buffer to avoid inner scroll
 
-  function measureWrapperHeight() {
+  // Ensure no page-level scrollbars inside the iframe
+  (function ensureCss(){
+    const s = document.createElement('style');
+    s.textContent = 'html,body{margin:0;overflow:hidden;height:auto!important;min-height:0!important}';
+    document.head.appendChild(s);
+  })();
+
+  function measure() {
     if (!wrapper) {
-      // fallback: doc scrollHeight
-      return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+      return Math.max(document.documentElement.scrollHeight, document.body.scrollHeight) + BUFFER;
     }
+    const rect = wrapper.getBoundingClientRect();
     const cs = getComputedStyle(wrapper);
-    const marginTop = parseFloat(cs.marginTop) || 0;
-    const marginBottom = parseFloat(cs.marginBottom) || 0;
-    const h = Math.ceil(wrapper.getBoundingClientRect().height + marginTop + marginBottom);
-    return h;
+    const mt = parseFloat(cs.marginTop) || 0;
+    const mb = parseFloat(cs.marginBottom) || 0;
+    return Math.ceil(rect.height + mt + mb + BUFFER);
   }
 
-  let lastSent = 0, rafId = null;
-  function sendHeight(reason) {
-    const h = measureWrapperHeight();
-    if (Math.abs(h - lastSent) >= 2) {
-      lastSent = h;
-      window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height: h, reason }, TARGET_ORIGIN);
-      // console.log('[FS child] post height →', h, 'reason:', reason);
+  let last = 0, raf = 0;
+  function send(reason) {
+    const h = measure();
+    if (Math.abs(h - last) >= 1) {
+      last = h;
+      window.parent.postMessage({ type:'FS_FORM_HEIGHT', height:h, reason }, TARGET_ORIGIN);
+      // console.debug('[FS child] →', h, reason);
     }
   }
-  function queue(reason) {
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(() => sendHeight(reason));
-  }
+  function queue(reason){ if (raf) cancelAnimationFrame(raf); raf = requestAnimationFrame(() => send(reason)); }
 
-  // Initial & after fonts (font swap can change height)
+  // Initials
   window.addEventListener('load', () => queue('load'));
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => queue('fonts-ready'));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => queue('fonts'));
 
-  // Observe wrapper changes only (less noisy than whole document)
+  // Watch wrapper only (less noise)
   if (window.ResizeObserver && wrapper) {
     const ro = new ResizeObserver(() => queue('resize-observer'));
     ro.observe(wrapper);
   } else {
-    // fallback heartbeat for older browsers
-    setInterval(() => queue('heartbeat'), 1500);
+    setInterval(() => queue('tick'), 1500);
   }
 
-  // Respond to parent requests
-  window.addEventListener('message', (event) => {
-    const data = event.data || {};
-    if (data.type === 'FS_REQUEST_HEIGHT') queue('parent-request');
-  });
-
-  // When state changes (county block appears), remeasure after paint
+  // When county section appears or thank-you swaps in, remeasure after paint
   const stateSelect = document.getElementById('stateSelect');
   if (stateSelect) stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
 
-  // When you swap to thank-you (innerHTML), remeasure after paint
-  if (wrapper) {
-    const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
-    Object.defineProperty(wrapper, 'innerHTML', {
-      set(value) {
-        set.call(this, value);
-        setTimeout(() => queue('wrapper-innerHTML'), 60);
-      }
-    });
-  }
+  const originalSet = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
+  Object.defineProperty(wrapper, 'innerHTML', {
+    set(v){ originalSet.call(this, v); setTimeout(() => queue('innerHTML'), 60); }
+  });
+
+  // Respond to parent’s requests
+  window.addEventListener('message', (ev) => {
+    if ((ev.data || {}).type === 'FS_REQUEST_HEIGHT') queue('parent-request');
+  });
+
+  // Also nudge on window resizes inside the iframe
+  window.addEventListener('resize', () => queue('window-resize'));
 })();
 </script>
-
 </body>
 </html>
