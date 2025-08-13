@@ -37,6 +37,7 @@
   }
 </script>
   <style>
+    html, body { margin: 0; overflow: hidden; }
     body {
       font-family: 'Lato', sans-serif;
       padding: 20px;
@@ -112,7 +113,7 @@
     .checkbox-wrapper label:hover {
       background-color: #f3d6d6;
     }
-    html, body { margin: 0; overflow: hidden; }
+    
 
   </style>
 </head>
@@ -793,58 +794,69 @@ const form = document.getElementById("infoForm");
 </script>
   <script>
   (function () {
-    // Helper to measure the full document height reliably
+    // Robust document height measurement
     function getDocHeight() {
       const doc = document.documentElement;
       const body = document.body;
       return Math.max(
         body.scrollHeight, doc.scrollHeight,
-        body.offsetHeight, doc.offsetHeight,
-        body.clientHeight, doc.clientHeight
+        body.offsetHeight,  doc.offsetHeight,
+        body.clientHeight,  doc.clientHeight
       );
     }
 
-    // Send height to parent
-    function sendHeight() {
+    function sendHeight(reason) {
       const height = getDocHeight();
-      window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height }, '*');
+      window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height, reason }, '*');
+      // DEBUG:
+      try { console.log('[FS child] post height →', height, 'reason:', reason); } catch(e){}
     }
 
-    // Fire on load
-    window.addEventListener('load', sendHeight);
+    // Reply to parent “please send height” pings
+    window.addEventListener('message', (event) => {
+      const data = event.data || {};
+      if (data.type === 'FS_REQUEST_HEIGHT') sendHeight('parent-request');
+    });
 
-    // Observe layout changes (fields appear, thank-you message, etc.)
-    const ro = new ResizeObserver(sendHeight);
+    // Fire on load + after fonts are ready (fonts can change metrics)
+    window.addEventListener('load', () => sendHeight('load'));
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => sendHeight('fonts-ready'));
+    }
+
+    // Observe body for layout changes (county group show/hide, thank-you swap, etc.)
+    const ro = new ResizeObserver(() => sendHeight('resize-observer'));
     ro.observe(document.body);
 
-    // Also ping on key interactions that change height
+    // Also fire on window resize (rare inside iframes, but safe)
+    window.addEventListener('resize', () => sendHeight('window-resize'));
+
+    // When State changes, the county block appears -> height changes after DOM paints
     const stateSelect = document.getElementById('stateSelect');
-    const countyGroup = document.getElementById('countyGroup');
     if (stateSelect) {
       stateSelect.addEventListener('change', () => {
-        // allow DOM to update, then measure
-        setTimeout(sendHeight, 50);
+        setTimeout(() => sendHeight('state-change'), 60);
       });
     }
 
-    // When the thank-you message replaces the form, resize again
-    // (Hook into fetch .then by monkey-patching innerHTML setter)
+    // After the form swaps to the Thank You message, re-measure
     const wrapper = document.querySelector('.form-wrapper');
     if (wrapper) {
-      const _set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
+      const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
       Object.defineProperty(wrapper, 'innerHTML', {
         set(value) {
-          _set.call(this, value);
-          setTimeout(sendHeight, 50);
+          set.call(this, value);
+          setTimeout(() => sendHeight('wrapper-innerHTML'), 60);
         }
       });
     }
 
-    // Fallback heartbeat (catches any missed changes)
-    const t = setInterval(sendHeight, 800);
+    // Heartbeat as final safety net
+    const t = setInterval(() => sendHeight('heartbeat'), 1200);
     window.addEventListener('beforeunload', () => clearInterval(t));
   })();
 </script>
+
 
 </body>
 </html>
