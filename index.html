@@ -795,61 +795,71 @@ const form = document.getElementById("infoForm");
   <script>
   (function () {
     const TARGET_ORIGIN = 'https://jstrupekgmk.github.io'; // parent origin
-    const wrapper = document.querySelector('.form-wrapper');
 
-    function getContentHeight() {
-      // Prefer measuring the wrapper (what you actually see)
-      if (wrapper) {
-        const rect = wrapper.getBoundingClientRect();
-        // rect.height is viewport-relative; add current scroll position to be safe
-        return Math.ceil(rect.height) + 2; // +2 for rounding/border
-      }
-      // Fallback to body scrollHeight only (avoid clientHeight=iframe viewport)
-      return Math.ceil(document.body.scrollHeight);
+    // Measure only scrollHeight to avoid using the iframe viewport height
+    function measure() {
+      return Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight
+      );
     }
+
+    let lastSent = 0;
+    let rafId = null;
 
     function sendHeight(reason) {
-      const height = getContentHeight();
-      window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height, reason }, TARGET_ORIGIN);
-      // console.log('[FS child] post height →', height, 'reason:', reason);
+      // Throttle: only send if changed by >= 2px
+      const h = measure();
+      if (Math.abs(h - lastSent) >= 2) {
+        lastSent = h;
+        window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height: h, reason }, TARGET_ORIGIN);
+        // console.log('[child] post height →', h, 'reason:', reason);
+      }
     }
 
-    // Respond when parent asks
+    // Debounced notifier (coalesce bursts of mutations/resize)
+    function queue(reason) {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => sendHeight(reason));
+    }
+
+    // Reply when the parent requests a height
     window.addEventListener('message', (event) => {
       if (event.origin !== TARGET_ORIGIN) return;
       const data = event.data || {};
-      if (data.type === 'FS_REQUEST_HEIGHT') sendHeight('parent-request');
+      if (data.type === 'FS_REQUEST_HEIGHT') queue('parent-request');
     });
 
-    // Initial + after fonts load
-    window.addEventListener('load', () => sendHeight('load'));
+    // Initial, after fonts, and on resize
+    window.addEventListener('load', () => queue('load'));
     if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(() => sendHeight('fonts-ready'));
+      document.fonts.ready.then(() => queue('fonts-ready'));
     }
+    window.addEventListener('resize', () => queue('window-resize'));
 
-    // Observe body for layout changes
-    const ro = new ResizeObserver(() => sendHeight('resize-observer'));
+    // Watch the whole document for layout-affecting changes
+    const ro = new ResizeObserver(() => queue('resize-observer'));
+    ro.observe(document.documentElement);
     ro.observe(document.body);
 
-    // State change reveals county; remeasure after paint
+    // Also fire when State changes (county reveal)
     const stateSelect = document.getElementById('stateSelect');
-    if (stateSelect) {
-      stateSelect.addEventListener('change', () => setTimeout(() => sendHeight('state-change'), 60));
-    }
+    if (stateSelect) stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
 
-    // When the thank-you replaces the form, remeasure
+    // Fire again when the Thank You message replaces the form
+    const wrapper = document.querySelector('.form-wrapper');
     if (wrapper) {
       const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
       Object.defineProperty(wrapper, 'innerHTML', {
         set(value) {
           set.call(this, value);
-          setTimeout(() => sendHeight('wrapper-innerHTML'), 60);
+          setTimeout(() => queue('wrapper-innerHTML'), 60);
         }
       });
     }
 
-    // Safety heartbeat (you can remove once confirmed)
-    const t = setInterval(() => sendHeight('heartbeat'), 1500);
+    // Safety ping in case something slips by (you can remove later)
+    const t = setInterval(() => queue('heartbeat'), 2000);
     window.addEventListener('beforeunload', () => clearInterval(t));
   })();
 </script>
