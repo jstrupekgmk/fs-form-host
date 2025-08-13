@@ -793,65 +793,74 @@ const form = document.getElementById("infoForm");
 });
 </script>
   <script>
-  (function () {
-    const TARGET_ORIGIN = '*'; // ← important for cross-domain
+(function () {
+  const TARGET_ORIGIN = '*';   // send to any; parent filters by origin
+  let lastSent = 0, rafId = null;
 
-    function measure() {
-      return Math.max(
-        document.documentElement.scrollHeight,
-        document.body.scrollHeight
-      );
+  function measure() {
+    // scrollHeight only (avoids picking up the iframe viewport height)
+    return Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight
+    );
+  }
+
+  function sendHeight(reason) {
+    const h = measure();
+    if (Math.abs(h - lastSent) >= 2) {
+      lastSent = h;
+      window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height: h, reason }, TARGET_ORIGIN);
+      // console.log('[FS child] post height →', h, 'reason:', reason);
     }
+  }
 
-    let lastSent = 0, rafId = null;
-    function sendHeight(reason) {
-      const h = measure();
-      if (Math.abs(h - lastSent) >= 2) {
-        lastSent = h;
-        window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height: h, reason }, TARGET_ORIGIN);
-        console.log('[FS child] post height →', h, 'reason:', reason);
+  function queue(reason) {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => sendHeight(reason));
+  }
+
+  // Initials + fonts (fonts can reflow height)
+  window.addEventListener('load', () => queue('load'));
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => queue('fonts-ready'));
+  }
+
+  // Observe DOM/layout changes
+  const ro = new ResizeObserver(() => queue('resize-observer'));
+  ro.observe(document.documentElement);
+  ro.observe(document.body);
+
+  // Respond to parent requests
+  window.addEventListener('message', (event) => {
+    const data = event.data || {};
+    if (data.type === 'FS_REQUEST_HEIGHT') queue('parent-request');
+  });
+
+  // State selection reveals County — remeasure after paint
+  const stateSelect = document.getElementById('stateSelect');
+  if (stateSelect) {
+    stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
+  }
+
+  // Thank-you screen replaces form — remeasure after paint
+  const wrapper = document.querySelector('.form-wrapper');
+  if (wrapper) {
+    const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
+    Object.defineProperty(wrapper, 'innerHTML', {
+      set(value) {
+        set.call(this, value);
+        setTimeout(() => queue('wrapper-innerHTML'), 60);
       }
-    }
-    function queue(reason) {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => sendHeight(reason));
-    }
-
-    window.addEventListener('message', (event) => {
-      const data = event.data || {};
-      if (data.type === 'FS_REQUEST_HEIGHT') queue('parent-request');
     });
+  }
 
-    window.addEventListener('load', () => queue('load'));
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => queue('fonts-ready'));
-    window.addEventListener('resize', () => queue('window-resize'));
-
-    const ro = new ResizeObserver(() => queue('resize-observer'));
-    ro.observe(document.documentElement);
-    ro.observe(document.body);
-
-    const stateSelect = document.getElementById('stateSelect');
-    if (stateSelect) stateSelect.addEventListener('change', () => setTimeout(() => queue('state-change'), 60));
-
-    const wrapper = document.querySelector('.form-wrapper');
-    if (wrapper) {
-      const set = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML').set;
-      Object.defineProperty(wrapper, 'innerHTML', {
-        set(value) {
-          set.call(this, value);
-          setTimeout(() => queue('wrapper-innerHTML'), 60);
-        }
-      });
-    }
-
-    const t = setInterval(() => queue('heartbeat'), 2000);
-    window.addEventListener('beforeunload', () => clearInterval(t));
-  })();
+  // Safety: a few pings early, then stop
+  let ticks = 0;
+  const t = setInterval(() => {
+    queue('heartbeat');
+    if (++ticks >= 6) clearInterval(t);
+  }, 2000);
+})();
 </script>
-
-
-
-
-
 </body>
 </html>
