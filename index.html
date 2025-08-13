@@ -789,5 +789,29 @@ const form = document.getElementById("infoForm");
   });
 });
 </script>
+  <script>
+  (function () {
+    const sendHeight = () => {
+      const height =
+        Math.max(
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight
+        );
+      window.parent.postMessage({ type: 'FS_FORM_HEIGHT', height }, '*');
+    };
+
+    // Fire on load
+    window.addEventListener('load', sendHeight);
+
+    // Re-fire whenever content changes (fields appear, thank-you message, etc.)
+    const ro = new ResizeObserver(sendHeight);
+    ro.observe(document.body);
+
+    // Fallback: ping occasionally in case something slips past ResizeObserver
+    const t = setInterval(sendHeight, 600);
+    window.addEventListener('beforeunload', () => clearInterval(t));
+  })();
+</script>
+
 </body>
 </html>
