@@ -730,7 +730,7 @@ const form = document.getElementById("infoForm");
   // Live validation message on typing
   emailInput.addEventListener("input", function () {
     if (isBlockedEmail(this.value)) {
-      this.setCustomValidity("Email domain not accepted (jourrapide.com, dayrep.com). Please use a different email.");
+      this.setCustomValidity("Email domain not accepted. Please use a different email.");
     } else {
       this.setCustomValidity("");
     }
