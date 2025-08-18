@@ -718,6 +718,24 @@ const form = document.getElementById("infoForm");
   const countySelect = document.getElementById("countySelect");
   const countyGroup = document.getElementById("countyGroup");
 
+  // ---- Blocklist for burner domains (jourrapide.com, dayrep.com) ----
+  const emailInput = document.getElementById("email");
+  const blockedDomains = ["jourrapide.com", "dayrep.com"];
+  function isBlockedEmail(email) {
+    const match = String(email).toLowerCase().trim().match(/@([^@\s>]+)$/);
+    if (!match) return false;
+    const domain = match[1];
+    return blockedDomains.includes(domain);
+  }
+  // Live validation message on typing
+  emailInput.addEventListener("input", function () {
+    if (isBlockedEmail(this.value)) {
+      this.setCustomValidity("Email domain not accepted (jourrapide.com, dayrep.com). Please use a different email.");
+    } else {
+      this.setCustomValidity("");
+    }
+  });
+
   // Populate State dropdown
   Object.keys(stateCountyMap).forEach(stateAbbr => {
     const option = document.createElement("option");
@@ -745,6 +763,14 @@ const form = document.getElementById("infoForm");
 
   // Handle form submission
   form.addEventListener("submit", function (e) {
+    // Block burner domains at submit as well
+    if (isBlockedEmail(emailInput.value)) {
+      alert("Please use a valid business or personal email address.\nEmails from jourrapide.com and dayrep.com are not accepted.");
+      emailInput.focus();
+      e.preventDefault();
+      return false;
+    }
+
     const interests = document.querySelectorAll('input[name="areaOfInterest"]:checked');
     if (interests.length === 0) {
       alert("Please select at least one Area of Interest.");
